@@ -50,6 +50,10 @@ Returned sample dates are target dates. This ensures that a â€œ2019 evaluationâ€
 
 The test set is report-only. It never selects a model, threshold, hyperparameter, or calibrator.
 
+### Extreme-cold event frequency
+
+![Annual extreme-cold event frequency](docs/images/positive_event_frequency.png)
+
 ## Models
 
 - Logistic Regression remains in the original 1-day compatibility report.
@@ -70,6 +74,8 @@ Strict OOT results:
 | 3 days | LightGBM | 2,245 | 2.23% | 0.892 | 0.305 | 0.936 | 0.421 | 0.320 | 0.364 | 0.0403 |
 | 7 days | Random Forest | 2,232 | 2.24% | 0.080 | 0.110 | 0.900 | 0.107 | 0.740 | 0.187 | 0.0219 |
 | 7 days | LightGBM | 2,232 | 2.24% | 0.699 | 0.098 | 0.890 | 0.107 | 0.160 | 0.128 | 0.0589 |
+
+![Forecast performance across prediction horizons](docs/images/horizon_performance.png)
 
 LightGBM had the highest Validation AP at all three horizons and is therefore the validation-selected artifact. The untouched test tells a more cautious story: Random Forest produced higher OOT AP and lower Brier at every horizon. This discrepancy is reported, not used to revise the selection rule.
 
@@ -96,6 +102,8 @@ evaluation = that year only
 
 Preprocessing is refit inside every fold. The evaluation year is excluded from training and threshold selection. All 90 folds found both classes in their trailing validation period, so no fallback threshold was needed.
 
+![Walk-forward Average Precision](docs/images/walk_forward_ap.png)
+
 | Horizon | Model | Mean yearly AP | AP standard deviation | Mean recall | Mean Brier |
 |---|---|---:|---:|---:|---:|
 | 1 day | Random Forest | 0.707 | 0.136 | 0.655 | 0.0141 |
@@ -112,6 +120,8 @@ Across complete years, 1-day AP did not show temporal degradation: the fitted AP
 ## Probability quality
 
 No probability calibrator is fitted. Reliability diagrams are diagnostic only, and Brier score evaluates raw probabilities. A fitted calibrator would require a separate untouched pre-test calibration period and would materially change the established baseline.
+
+![Probability reliability diagnostics](docs/images/calibration.png)
 
 ## Run
 
