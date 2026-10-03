@@ -5,6 +5,7 @@ from cold_events.backtesting import walk_forward_fold_masks
 from cold_events.data import load_gsod
 from cold_events.features import build_supervised_frame
 from cold_events.modeling import choose_threshold, temporal_partitions, temporal_split
+from cold_events.original_setup import _subsets, original_models
 
 
 def test_loader_filters_station_sorts_and_cleans_sentinels(tmp_path):
@@ -21,6 +22,25 @@ def test_loader_filters_station_sorts_and_cleans_sentinels(tmp_path):
     assert result["DATE"].is_monotonic_increasing
     assert len(result) == 2
     assert np.isnan(result.loc[1, "MIN"])
+
+
+def test_loader_reads_yearly_gsod_csv_directory_and_end_date(tmp_path):
+    columns = {"MIN": 20.0, "MAX": 30.0, "TEMP": 25.0, "GUST": 999.9, "SNDP": 999.9}
+    for year in (2020, 2021):
+        pd.DataFrame([
+            {"STATION": 1, "DATE": f"{year}-01-01", **columns},
+            {"STATION": 1, "DATE": f"{year}-06-01", **columns},
+        ]).to_csv(tmp_path / f"{year}.csv", index=False)
+    result = load_gsod(tmp_path, station=1, end_date="2021-01-01")
+    assert result["DATE"].tolist() == list(pd.to_datetime(["2020-01-01", "2020-06-01", "2021-01-01"]))
+    assert result["GUST"].isna().all() and result["SNDP"].isna().all()
+
+
+def test_original_setup_scales_distance_and_linear_models():
+    models = original_models()
+    for name in ("logistic_regression", "svm_rbf"):
+        assert "scale" in models[name].named_steps
+    assert all("imputer" in model.named_steps for model in models.values())
 
 
 def test_windows_reject_calendar_gaps():
@@ -84,3 +104,15 @@ def test_walk_forward_training_and_threshold_periods_precede_evaluation_year():
     assert dates.loc[masks["validation"]].max() < evaluation_start
     assert dates.loc[masks["evaluation"]].min() == evaluation_start
     assert not (masks["validation"] & masks["evaluation"]).any()
+
+
+def test_onset_subset_counts_only_detected_onset_events():
+    y_test = pd.Series([0, 1, 1, 0, 1, 0])
+    score = np.array([0.1, 0.9, 0.8, 0.2, 0.7, 0.3])
+    prediction = np.array([0, 1, 0, 1, 1, 0])
+    winter = np.array([True, True, True, True, False, False])
+    onset = np.array([True, True, False, True, True, True])
+    result = _subsets(y_test, score, prediction, winter, onset)
+    assert result["onset"]["positives"] == 2
+    assert result["onset"]["detected"] == 2
+    assert result["winter"]["roc_auc"] == 1.0
