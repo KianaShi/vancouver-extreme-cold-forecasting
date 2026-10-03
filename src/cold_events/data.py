@@ -10,9 +10,23 @@ SENTINELS = {"MIN": 9999.9, "MAX": 9999.9, "TEMP": 9999.9, "GUST": 999.9, "SNDP"
 DEFAULT_STATION = 71892099999
 
 
-def load_gsod(path: str | Path, station: int = DEFAULT_STATION) -> pd.DataFrame:
+def _read_source(path: Path) -> pd.DataFrame:
+    """Read the original workbook, one NOAA GSOD CSV, or a directory of yearly CSVs."""
+    if path.is_dir():
+        files = sorted(path.glob("*.csv"))
+        if not files:
+            raise ValueError(f"No .csv files found in {path}")
+        return pd.concat([pd.read_csv(file) for file in files], ignore_index=True)
+    if path.suffix.lower() == ".csv":
+        return pd.read_csv(path)
+    return pd.read_excel(path, sheet_name="data")
+
+
+def load_gsod(
+    path: str | Path, station: int = DEFAULT_STATION, end_date: str | None = None
+) -> pd.DataFrame:
     """Load, validate, clean, and chronologically order one GSOD station."""
-    frame = pd.read_excel(path, sheet_name="data")
+    frame = _read_source(Path(path))
     required = {"STATION", "DATE", *FEATURE_COLUMNS}
     missing = required.difference(frame.columns)
     if missing:
@@ -22,6 +36,8 @@ def load_gsod(path: str | Path, station: int = DEFAULT_STATION) -> pd.DataFrame:
     if frame.empty:
         raise ValueError(f"Station {station} is absent from the workbook")
     frame["DATE"] = pd.to_datetime(frame["DATE"], errors="raise")
+    if end_date is not None:
+        frame = frame.loc[frame["DATE"].le(pd.Timestamp(end_date))]
     frame = frame.sort_values("DATE").drop_duplicates(["STATION", "DATE"], keep="last")
 
     for column, sentinel in SENTINELS.items():

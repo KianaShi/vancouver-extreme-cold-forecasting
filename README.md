@@ -1,6 +1,38 @@
 # Vancouver Extreme Cold Forecasting
 
-A leakage-safe, multi-horizon extreme-cold forecasting project using daily GSOD observations from Vancouver International Airport. It reconstructs and audits a flawed undergraduate experiment, then evaluates 1-, 3-, and 7-day forecasts through a strict 2019-2025 holdout and expanding-window historical backtesting.
+A leakage-safe, multi-horizon extreme-cold forecasting project using daily GSOD observations from Vancouver International Airport. It started as a Spring 2025 environmental science capstone: the capstone analysis is reproduced here with its data-handling errors corrected, and the project is then extended to 1-, 3-, and 7-day forecasts with a strict 2019-2025 holdout and expanding-window historical backtesting.
+
+## Reproducing the capstone paper
+
+The original capstone code was not fully preserved, so the paper's analysis was reproduced from the public NOAA data. The reproduction keeps the capstone design: the previous five days of `MIN`, `MAX`, `TEMP`, `GUST`, and `SNDP` (25 features) predict whether the next day is an extreme cold day (`MIN < 23°F`), using Logistic Regression, Random Forest, and an RBF-kernel SVM with `class_weight='balanced'`, a 2019-01-01 chronological split, and each model's default decision rule. Only the data-handling errors listed below are corrected.
+
+Download the station's yearly GSOD files from NOAA NCEI into `data/raw/gsod/`:
+
+```bash
+mkdir -p data/raw/gsod
+for year in $(seq 1957 2025); do
+  curl -sf -o data/raw/gsod/$year.csv \
+    "https://www.ncei.noaa.gov/data/global-summary-of-the-day/access/$year/71892099999.csv"
+done
+```
+
+No files exist for 1960-1976 or 2005; the station has no data for those years. Then run:
+
+```bash
+uv sync --extra dev
+uv run cold-events --data data/raw/gsod --end-date 2025-04-01 --output artifacts --original-setup
+```
+
+This writes `artifacts/original_setup/metrics.json` and the paper's figures (`confusion_matrices.png`, `roc_curves.png`, `pr_curves.png`). Results on the 2019-2025 test period (2,253 days, 50 extreme cold days):
+
+| Model | Precision | Recall | F1 | ROC AUC | Average precision |
+|---|---:|---:|---:|---:|---:|
+| Persistence baseline (previous day's `MIN`) | - | - | - | 0.985 | 0.651 |
+| Logistic Regression | 0.297 | 0.940 | 0.452 | 0.990 | 0.718 |
+| Random Forest | 0.600 | 0.420 | 0.494 | 0.989 | 0.649 |
+| SVM (RBF kernel) | 0.333 | 0.900 | 0.486 | 0.973 | 0.555 |
+
+Much of next-day predictability comes from the persistence of cold conditions. On the 20 onset days, when the previous day was not yet extremely cold, the baseline's average precision falls to 0.322, while Logistic Regression reaches 0.426, SVM 0.419, and Random Forest 0.510. At their default decision rules, Logistic Regression and SVM each detect 17 of the 20 onsets and Random Forest detects 1. `metrics.json` also reports winter-only (November-March) scores.
 
 ## Project focus
 
@@ -18,10 +50,10 @@ The project is intentionally about trustworthy temporal ML rather than model nov
 - Dates were not globally ordered, and windows could cross stations or calendar gaps.
 - GSOD sentinels (`9999.9` and `999.9`) were treated as real measurements.
 - “Last 20%” was described as a 2019-2025 test despite the row order.
-- The saved winner was selected using test AP.
+- Logistic Regression and SVM were trained on unscaled inputs.
 - The original implementation did not define a reusable issue-date/target-date contract.
 
-The original scores are therefore not treated as reproducible evidence.
+The original scores are therefore not treated as reproducible evidence; the corrected capstone results are in [Reproducing the capstone paper](#reproducing-the-capstone-paper).
 
 ## Leakage-safe forecast definition
 
@@ -125,17 +157,17 @@ No probability calibrator is fitted. Reliability diagrams are diagnostic only, a
 
 ## Run
 
-Place the workbook at `data/raw/1957-2025.xlsx`, then:
+`--data` accepts the original `.xlsx` workbook, a single GSOD `.csv`, or a directory of yearly GSOD `.csv` files (see [Reproducing the capstone paper](#reproducing-the-capstone-paper) for the download). With the NOAA files:
 
 ```bash
 uv sync --extra dev
-uv run cold-events --data data/raw/1957-2025.xlsx --output artifacts
+uv run cold-events --data data/raw/gsod --end-date 2025-04-01 --output artifacts
 uv run pytest -q
 uv run ruff check .
 uv lock --check
 ```
 
-Use `--skip-backtest` for a faster horizon-only run.
+Use `--skip-backtest` for a faster horizon-only run. The downloaded station data reproduce the results above exactly (17,708 daily rows through 2025-04-01, 398 extreme cold days).
 
 ## Artifacts
 
@@ -158,10 +190,11 @@ src/cold_events/data.py          station contract and GSOD sentinel cleaning
 src/cold_events/features.py      issue-time multi-horizon feature/target construction
 src/cold_events/modeling.py      compatibility benchmark and model definitions
 src/cold_events/backtesting.py   horizon benchmark, walk-forward folds, drift and plots
+src/cold_events/original_setup.py corrected capstone reproduction, persistence baseline, onsets
 tests/                           data, target-horizon, split and threshold-leakage tests
 .github/workflows/ci.yml         locked-environment lint and test automation
 ```
 
 ## Original work
 
-This repository is a portfolio-grade reconstruction of a Spring 2025 environmental science capstone. The thesis PDF can be linked from a GitHub Release or a `docs/` folder if institutional sharing is permitted.
+This repository builds on a Spring 2025 environmental science capstone (ENVR 4997). The capstone paper's results can be regenerated with the `--original-setup` run above.
